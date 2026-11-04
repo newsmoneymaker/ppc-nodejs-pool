@@ -1,4 +1,4 @@
-// Unit checks of the Scash address handling (bech32 basecoin addresses). Run: node test/test-account.js
+// Unit checks of the PoolPayCoin address handling (bech32 basecoin addresses). Run: node test/test-account.js
 const path = require('path');
 global.config = {};
 const u = require(path.join(__dirname, '../lib/utils.js'));
@@ -14,8 +14,8 @@ check('canonical form is the address itself', u.canonicalMinerAddress(OK) === OK
 const flipped = OK.slice(0, -1) + (OK.slice(-1) === 'q' ? 'p' : 'q');
 check('bad checksum rejected', !u.validateMinerAddress(flipped));
 check('upper case rejected', !u.validateMinerAddress(OK.toUpperCase()));
-check('other prefix rejected', !u.validateMinerAddress(makeAddress(1, 'bc')) && !u.validateMinerAddress(makeAddress(1, 'tscash')));
-check('real address from the network', u.validateMinerAddress('scash1qpwvxeyevawc4q9qt6dfpfc0wsz82qekkllwjn9') && u.addressScript('scash1qpwvxeyevawc4q9qt6dfpfc0wsz82qekkllwjn9') === '00140b986c932cebb150140bd35214e1ee808ea066d6');
+check('other prefix rejected', !u.validateMinerAddress(makeAddress(1, 'bc')) && !u.validateMinerAddress(makeAddress(1, 'tppc')));
+check('real address from the network', u.validateMinerAddress('ppc1qnsl3wsepdfjt9xvctsglj3q0kj27ce8w7653a0') && u.addressScript('ppc1qnsl3wsepdfjt9xvctsglj3q0kj27ce8w7653a0') === '00149c3f1743216a64b299985c11f9440fb495ec64ee');
 check('too short rejected', !u.validateMinerAddress(OK.slice(0, 30)));
 check('too long rejected', !u.validateMinerAddress(OK + 'q'));
 check('empty and non-string rejected', !u.validateMinerAddress('') && !u.validateMinerAddress(null) && !u.validateMinerAddress(42));

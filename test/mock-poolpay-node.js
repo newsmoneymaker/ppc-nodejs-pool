@@ -1,7 +1,7 @@
-// Mock of scashd for the pool tests: Bitcoin style JSON-RPC (HTTP, basic auth ignored) with getbestblockhash, getblocktemplate, submitblock,
-// getblockhash, getblockcount, getblockheader. A submitted block is verified with the real RandomX helper (--scash), so a solution has to be real:
+// Mock of poolpaycoind for the pool tests: Bitcoin style JSON-RPC (HTTP, basic auth ignored) with getbestblockhash, getblocktemplate, submitblock,
+// getblockhash, getblockcount, getblockheader. A submitted block is verified with the real RandomX helper (--poolpay), so a solution has to be real:
 // header.hashRandomX must be the RandomX hash of the header and the RandomX commitment must not be above the target.
-// node mock-scash-node.js <port> <bits hex> [hasherPath]
+// node mock-poolpay-node.js <port> <bits hex> [hasherPath]
 const http = require('http');
 const crypto = require('crypto');
 const {spawn} = require('child_process');
@@ -18,7 +18,7 @@ function compactToTarget (bits) {
 	return exponent <= 3 ? mantissa >> BigInt(8 * (3 - exponent)) : mantissa << BigInt(8 * (exponent - 3));
 }
 let TARGET = compactToTarget(BITS);
-const keyOf = time => sha256d(Buffer.from('Scash/RandomX/Epoch/' + Math.floor(time / EPOCH))).toString('hex');
+const keyOf = time => sha256d(Buffer.from('PoolPayCoin/RandomX/Epoch/' + Math.floor(time / EPOCH))).toString('hex');
 
 let height = 150000;
 let tip = crypto.randomBytes(32).toString('hex');           // display order
@@ -27,7 +27,7 @@ blocks[height] = tip;
 let accepted = 0, submitted = 0, lastBlock = null;
 
 // verification helper: the key changes with the epoch of the block time, so one process per key
-const hasher = spawn(HASHER, ['--scash', '--threads', '1', '--light']);
+const hasher = spawn(HASHER, ['--poolpay', '--threads', '1', '--light']);
 hasher.stdout.setEncoding('utf8');
 let hbuf = '', hwait = {}, currentKey = null, keyWaiters = [], keyBusy = false;
 hasher.stdout.on('data', function (d) {
@@ -106,4 +106,4 @@ http.createServer(function (req, res) {
 			res.end(JSON.stringify({result: err ? null : result, error: err || null, id: msg.id}));
 		});
 	});
-}).listen(PORT, '127.0.0.1', () => console.log('mock scashd on', PORT, 'bits', BITS.toString(16), 'target hashes ~', Number((1n << 256n) / (TARGET + 1n))));
+}).listen(PORT, '127.0.0.1', () => console.log('mock poolpaycoind on', PORT, 'bits', BITS.toString(16), 'target hashes ~', Number((1n << 256n) / (TARGET + 1n))));

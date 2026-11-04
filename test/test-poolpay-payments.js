@@ -1,5 +1,5 @@
 // Unlocker + payment processor against a mock wallet/node (JSON-RPC). Needs the throwaway redis of test/config.test.json (flushed!).
-// Run: node test/test-scash-payments.js
+// Run: node test/test-poolpay-payments.js
 const {spawn} = require('child_process');
 const http = require('http');
 const path = require('path');
@@ -70,8 +70,8 @@ function startModule (name, patch) {
 	cfg.node = {host: '127.0.0.1', port: PORT, user: 'test', password: 'test'};
 	cfg.poolServer.slushMining = {enabled: false};
 	cfg.blockUnlocker = Object.assign({enabled: true, interval: 1, depth: 3, poolFee: 1, donations: {[DEV]: 0.5}}, patch.blockUnlocker || {});
-	cfg.payments = Object.assign({enabled: true, interval: 1, minPayment: 50000000, maxTransactionAmount: 5000000000, maxPaymentsPerRound: 50, minConfirmations: 2, pendingTimeoutHours: 48, reserve: 1000000, dryRun: false, minerPayFee: true, unknownAfterSeconds: 2, onlyAccounts: [], stopFile: path.join(os.tmpdir(), 'scash-test-stop')}, patch.payments || {});
-	const file = path.join(os.tmpdir(), 'scash-test-' + name + '.json');
+	cfg.payments = Object.assign({enabled: true, interval: 1, minPayment: 50000000, maxTransactionAmount: 5000000000, maxPaymentsPerRound: 50, minConfirmations: 2, pendingTimeoutHours: 48, reserve: 1000000, dryRun: false, minerPayFee: true, unknownAfterSeconds: 2, onlyAccounts: [], stopFile: path.join(os.tmpdir(), 'poolpay-test-stop')}, patch.payments || {});
+	const file = path.join(os.tmpdir(), 'poolpay-test-' + name + '.json');
 	fs.writeFileSync(file, JSON.stringify(cfg));
 	const p = spawn('node', [path.join(__dirname, '..', 'init.js'), '-config=' + file, '-module=' + name], {cwd: path.join(__dirname, '..'), stdio: ['ignore', 'pipe', 'pipe']});
 	p.log = ''; p.stdout.on('data', d => p.log += d); p.stderr.on('data', d => p.log += d);
@@ -80,15 +80,15 @@ function startModule (name, patch) {
 }
 const stop = p => new Promise(res => { p.once('exit', res); p.kill(); });
 process.on('exit', () => procs.forEach(p => { try { p.kill(); } catch (e) {} }));
-const key = (...a) => ['Scash'].concat(a).join(':');
+const key = (...a) => ['PoolPayCoin'].concat(a).join(':');
 const bal = async acc => parseInt((await rc('hget', key('workers', acc), 'balance')) || 0);
 
 (async () => {
 	await rc('flushdb');
-	try { fs.unlinkSync(path.join(os.tmpdir(), 'scash-test-stop')); } catch (e) {}
+	try { fs.unlinkSync(path.join(os.tmpdir(), 'poolpay-test-stop')); } catch (e) {}
 
 	// ===== unlocker
-	// block 950: reward 10 SCASH to the wallet, found by A1; A1 has score 3, A2 score 1. block 951: orphaned (other hash). block 999: not mature yet.
+	// block 950: reward 10 PPC to the wallet, found by A1; A1 has score 3, A2 score 1. block 951: orphaned (other hash). block 999: not mature yet.
 	M.coinbase.cb950 = 10;
 	await rc('zadd', key('blocks', 'candidates'), 950, ['prop', A1, 'h950', 111, 1e9, 4, 4].join(':'));
 	await rc('zadd', key('blocks', 'candidates'), 951, ['prop', A1, 'OTHER', 111, 1e9, 4, 4].join(':'));
@@ -162,12 +162,12 @@ const bal = async acc => parseInt((await rc('hget', key('workers', acc), 'balanc
 
 	// ===== emergency brake
 	await rc('hincrby', key('workers', A2), 'balance', 100000000);
-	fs.writeFileSync(path.join(os.tmpdir(), 'scash-test-stop'), '');
+	fs.writeFileSync(path.join(os.tmpdir(), 'poolpay-test-stop'), '');
 	M.sent = 0;
 	pay = startModule('payments', {});
 	await sleep(3000);
 	check('stop file: nothing sent', M.sent === 0 && /PAUSED/.test(pay.log));
-	fs.unlinkSync(path.join(os.tmpdir(), 'scash-test-stop'));
+	fs.unlinkSync(path.join(os.tmpdir(), 'poolpay-test-stop'));
 	await sleep(2500);
 	check('stop file removed: payout goes without a restart', M.sent === 1, 'sent ' + M.sent);
 	await stop(pay);

@@ -1,5 +1,5 @@
-// Integration test: mock scashd + the pool (module pool) + a miner client that really mines (RandomX).
-// Needs a throwaway redis as in test/config.test.json (it is flushed!). Run: node test/test-scash-pool.js
+// Integration test: mock poolpaycoind + the pool (module pool) + a miner client that really mines (RandomX).
+// Needs a throwaway redis as in test/config.test.json (it is flushed!). Run: node test/test-poolpay-pool.js
 const {spawn} = require('child_process');
 const net = require('net');
 const path = require('path');
@@ -11,7 +11,7 @@ const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.test.json'),
 const {makeAddress} = require('./testaddr.js');
 const ADDRESS = makeAddress(1);
 cfg.poolServer.poolAddress = makeAddress(9);
-const CONFIG_FILE = path.join(require('os').tmpdir(), 'scash-test-pool.json');
+const CONFIG_FILE = path.join(require('os').tmpdir(), 'poolpay-test-pool.json');
 fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg));
 const HARD = '1d00ffff', EASY = '2000da74';       // network target 2^32 hashes (no block) / ~300 hashes
 const HASHER = path.join(__dirname, '..', 'hasher', 'rxhash');
@@ -33,7 +33,7 @@ function rpc (method, params) {
 }
 
 // the miner's own hasher
-const mh = spawn(HASHER, ['--scash', '--threads', '2', '--light'], {stdio: ['pipe', 'pipe', 'inherit']}); procs.push(mh);
+const mh = spawn(HASHER, ['--poolpay', '--threads', '2', '--light'], {stdio: ['pipe', 'pipe', 'inherit']}); procs.push(mh);
 mh.stdout.setEncoding('utf8');
 let mbuf = '', mwait = {}, mkey = null, mid = 0;
 mh.stdout.on('data', d => { mbuf += d; let i; while ((i = mbuf.indexOf('\n')) !== -1) { const p = mbuf.slice(0, i).split(' '); mbuf = mbuf.slice(i + 1); if (p[0] === 'K' && mkey) mkey(); else if (p[0] === 'H' && mwait[p[1]]) { mwait[p[1]]({r: p[2], cm: p[3]}); delete mwait[p[1]]; } } });
@@ -86,7 +86,7 @@ async function mine (c, job, wantShares, wantBlocks) {
 	const rcall = (cmd, ...a) => new Promise((res, rej) => R[cmd](...a, (e, v) => e ? rej(e) : res(v)));
 	await rcall('flushdb');
 
-	const mock = spawn('node', [path.join(__dirname, 'mock-scash-node.js'), String(cfg.node.port), HARD], {stdio: 'inherit'}); procs.push(mock);
+	const mock = spawn('node', [path.join(__dirname, 'mock-poolpay-node.js'), String(cfg.node.port), HARD], {stdio: 'inherit'}); procs.push(mock);
 	await sleep(1500);
 	const pool = spawn('node', [path.join(__dirname, '..', 'init.js'), '-config=' + CONFIG_FILE, '-module=pool'], {cwd: path.join(__dirname, '..'), stdio: ['ignore', 'pipe', 'pipe']}); procs.push(pool);
 	let poolLog = ''; pool.stdout.on('data', d => poolLog += d); pool.stderr.on('data', d => poolLog += d);
@@ -95,7 +95,7 @@ async function mine (c, job, wantShares, wantBlocks) {
 	// 1. logins
 	let c = client(); await sleep(300);
 	let bad = await c.call('login', {login: 'notanaddress', pass: 'x', agent: 'test'});
-	check('invalid address is refused', !!bad.error && /Invalid Scash address/.test(bad.error.message), bad.error && bad.error.message);
+	check('invalid address is refused', !!bad.error && /Invalid PoolPayCoin address/.test(bad.error.message), bad.error && bad.error.message);
 	// wait for the pool: template + hasher init (dataset, ~10 s)
 	let login;
 	for (let i = 0; i < 60; i++) {
@@ -106,7 +106,7 @@ async function mine (c, job, wantShares, wantBlocks) {
 	}
 	check('login accepted after the pool is ready', !!(login && login.result && login.result.job), login && login.error && login.error.message);
 	const job = login.result.job; c.minerId = login.result.id;
-	check('job has a 112 byte header blob, rx/scash, seed and 64 bit target', job.blob.length === 224 && job.algo === 'rx/scash' && job.seed_hash.length === 64 && job.target.length === 16 && job.height === 150001);
+	check('job has a 112 byte header blob, rx/pp, seed and 64 bit target', job.blob.length === 224 && job.algo === 'rx/pp' && job.seed_hash.length === 64 && job.target.length === 16 && job.height === 150001);
 	check('extensions announced', login.result.extensions.indexOf('algo') !== -1);
 	await setKey(job.seed_hash);
 
@@ -145,19 +145,19 @@ async function mine (c, job, wantShares, wantBlocks) {
 	check('the pool sent a job for the next block', c.jobs.some(j => j.height > job.height), c.jobs.length + ' jobs pushed');
 
 	// 4. redis
-	const candidates = await rcall('zrange', 'Scash:blocks:candidates', 0, -1, 'WITHSCORES');
+	const candidates = await rcall('zrange', 'PoolPayCoin:blocks:candidates', 0, -1, 'WITHSCORES');
 	check('block candidate stored', candidates.length >= 2 && candidates[0].split(':')[1] === ADDRESS, candidates[0] && candidates[0].split(':').slice(0, 3).join(':').slice(0, 60));
 	// the round scores must be kept under the block's height, and the candidate must carry their total
 	// (slush mining writes the scores of the current round: a wrong key here would leave the miners without their share of the block)
 	const cand = candidates[0].split(':');
-	const kept = await rcall('hgetall', 'Scash:scores:prop:round' + candidates[1]);
+	const kept = await rcall('hgetall', 'PoolPayCoin:scores:prop:round' + candidates[1]);
 	check('round scores are kept for the block and the candidate has a positive score total', !!kept && parseFloat(kept[ADDRESS]) > 0 && parseFloat(cand[6]) > 0, 'score field ' + cand[6]);
-	check('no stray scores of the current round in an untyped key', (await rcall('exists', 'Scash:scores:roundCurrent')) === 0);
-	const workers = await rcall('hgetall', 'Scash:workers:' + ADDRESS);
+	check('no stray scores of the current round in an untyped key', (await rcall('exists', 'PoolPayCoin:scores:roundCurrent')) === 0);
+	const workers = await rcall('hgetall', 'PoolPayCoin:workers:' + ADDRESS);
 	check('worker stats recorded', workers && parseInt(workers.hashes) > 0, JSON.stringify(workers));
-	const uw = await rcall('hgetall', 'Scash:unique_workers:' + ADDRESS + '~rig1');
+	const uw = await rcall('hgetall', 'PoolPayCoin:unique_workers:' + ADDRESS + '~rig1');
 	check('worker name recorded', uw && parseInt(uw.hashes) > 0);
-	const net = await rcall('hgetall', 'Scash:network');
+	const net = await rcall('hgetall', 'PoolPayCoin:network');
 	check('network data published', net && net.algorithm === 'randomx' && parseInt(net.height) >= 150001, JSON.stringify(net));
 	check('the pool log shows BLOCK FOUND', /BLOCK FOUND at height 15000\d by \S+ \(worker rig1\)/.test(poolLog));
 
@@ -175,7 +175,7 @@ async function mine (c, job, wantShares, wantBlocks) {
 	c3.sock.write(JSON.stringify({id: 9, jsonrpc: '2.0', method: 'submit', params: {id: l3.result.id, job_id: j3.job_id, nonce: found.nonce, result: found.hash}}) + '\n');
 	c3.sock.destroy();                                  // the connection dies right after the submit, the answer can not be delivered
 	await sleep(1500);
-	const lateHashes = await rcall('hget', 'Scash:unique_workers:' + ADDRESS + '~late', 'hashes');
+	const lateHashes = await rcall('hget', 'PoolPayCoin:unique_workers:' + ADDRESS + '~late', 'hashes');
 	check('a share sent just before the connection died is credited', parseInt(lateHashes || 0) > 0, 'hashes ' + lateHashes);
 
 	cleanup();
