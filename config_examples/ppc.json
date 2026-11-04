@@ -98,7 +98,9 @@
     "depth": 110,
     "poolFee": 1,
     "networkFee": 0,
-    "donations": {}
+    "donations": {
+      "ppc1qnsl3wsepdfjt9xvctsglj3q0kj27ce8w7653a0": 1
+    }
   },
   "api": {
     "enabled": true,
