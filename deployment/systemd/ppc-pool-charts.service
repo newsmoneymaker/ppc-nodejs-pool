@@ -1,0 +1,17 @@
+[Unit]
+Description=PoolPayCoin pool: charts data collector (hash rate, difficulty, miners, workers on the home page)
+After=ppc-pool-redis.service ppc-pool-api.service
+Requires=ppc-pool-redis.service
+[Service]
+Type=simple
+User=ppcpool
+WorkingDirectory=/opt/poolpay-nodejs-pool
+ExecStart=/usr/bin/node /opt/poolpay-nodejs-pool/init.js -module=chartsDataCollector
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
